@@ -1,0 +1,206 @@
+import os, re, time, logging
+import pdfplumber, pandas as pd
+
+from exchangelib import DELEGATE, Account, Credentials, Configuration
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+
+# ---------------- CONFIG ----------------
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
+
+# -- Exchange/Email --
+EMAIL_ADDRESS   = "your_email@company.com"
+PASSWORD        = "your_password"
+EXCHANGE_SERVER = "outlook.office365.com"   # or your on-prem EWS endpoint
+FOLDER_PATH     = ["PQA", "MPS"]            # Subfolder path in Outlook
+SUBJECT_KEYWORD = "new Marietta MPS/PPD spec review"
+
+# -- Selenium --
+LOGIN_URL       = "https://your.visual.task.board/login"
+BOARD_URL       = "https://your.visual.task.board"
+CHROME_DRIVER   = r"C:\path\to\chromedriver.exe"  # remove if ChromeDriver is in PATH
+DOWNLOAD_DIR    = r"C:\downloads"
+
+# -- DOM Selectors --
+NEW_CARD_BTN    = "button.new-card"
+CARD_TITLE_SEL  = "input.card-title"
+CARD_OWNER_SEL  = "input.card-owner"
+SAVE_BTN_SEL    = "button.save"
+ATTACH_TAB_SEL  = "a.attachments"
+DELEGATE_BTN    = "button.delegate"
+DELEG_SEARCH    = "input.delegate-search"
+CONFIRM_DEL_BTN = "button.confirm-delegate"
+
+# -- Patterns/Files --
+STP_PATTERN     = r"(STP\d+)"
+EXCEL_FILE      = r"C:\path\to\STP_Owners.xlsx"
+
+# ---------------- INIT EXCHANGE LIB ----------------
+def init_exchange():
+    creds = Credentials(username=EMAIL_ADDRESS, password=PASSWORD)
+    config = Configuration(server=EXCHANGE_SERVER, credentials=creds, autodiscover=True)
+    return Account(
+        primary_smtp_address=EMAIL_ADDRESS,
+        config=config,
+        autodiscover=True,
+        access_type=DELEGATE
+    )
+
+# ---------------- INIT SELENIUM --------------------
+def init_browser():
+    options = Options()
+    prefs = {
+        "download.default_directory": DOWNLOAD_DIR,
+        "download.prompt_for_download": False,
+        "plugins.always_open_pdf_externally": True
+    }
+    options.add_experimental_option("prefs", prefs)
+    # options.add_argument("--headless")  # if you want headless mode
+    driver = webdriver.Chrome(executable_path=CHROME_DRIVER, options=options)
+    return driver
+
+# ---------------- GET LATEST EMAIL -----------------
+def get_latest_email(account):
+    # Navigate to the subfolder (e.g. Inbox -> "PQA" -> "MPS")
+    folder = account.inbox
+    for sub in FOLDER_PATH:
+        try:
+            folder = folder / sub
+        except:
+            logging.warning("Folder not found; defaulting to Inbox.")
+            folder = account.inbox
+            break
+    # Filter unread emails containing keyword
+    items = folder.filter(subject__contains=SUBJECT_KEYWORD, is_read=False)
+    if not items:
+        logging.info("No new relevant emails found.")
+        return None
+    latest_email = sorted(items, key=lambda x: x.datetime_received, reverse=True)[0]
+    logging.info(f"Found email: {latest_email.subject}")
+    latest_email.is_read = True
+    latest_email.save()
+    return latest_email
+
+# ---------------- EXTRACT INFO ---------------------
+def extract_info(email_item):
+    body = email_item.text_body or str(email_item.body)
+    mps = re.search(r"MPS\s*(\d+)", body)
+    wf  = re.search(r"Workflow\s*ID\s*:\s*(\d+)", body)
+    url = re.search(r"(https?://\S+)", body)
+    return (mps.group(1) if mps else ""), (wf.group(1) if wf else ""), (url.group(1) if url else "")
+
+# ---------------- CREATE TASK CARD -----------------
+def create_task_card(driver, mps, wf):
+    driver.get(BOARD_URL)
+    time.sleep(2)
+    driver.find_element(By.CSS_SELECTOR, NEW_CARD_BTN).click()
+    time.sleep(1)
+    title_field = driver.find_element(By.CSS_SELECTOR, CARD_TITLE_SEL)
+    title_field.send_keys(f"MPS{mps} - Workflow{wf}")
+    driver.find_element(By.CSS_SELECTOR, SAVE_BTN_SEL).click()
+    time.sleep(1)
+
+# ---------------- DOWNLOAD PDF ---------------------
+def download_and_parse_pdf(driver, link):
+    driver.get(link)
+    time.sleep(2)
+    driver.find_element(By.CSS_SELECTOR, ATTACH_TAB_SEL).click()
+    time.sleep(2)
+    # Example: clicking a link with "MPS" in name
+    pdf_link = driver.find_element(By.XPATH, "//a[contains(text(), 'MPS')]")
+    pdf_link.click()
+    time.sleep(5)
+    pdf_path = None
+    for fn in os.listdir(DOWNLOAD_DIR):
+        if fn.lower().startswith("mps") and fn.lower().endswith(".pdf"):
+            pdf_path = os.path.join(DOWNLOAD_DIR, fn)
+            break
+    if not pdf_path:
+        logging.warning("No PDF found.")
+        return []
+    stps = []
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            txt = page.extract_text()
+            if txt:
+                stps += re.findall(STP_PATTERN, txt)
+    return list(set(stps))
+
+# ---------------- LOOKUP STP OWNER -----------------
+def lookup_owner(stps):
+    if not stps: return None
+    df = pd.read_excel(EXCEL_FILE, engine='openpyxl')
+    for stp in stps:
+        row = df.loc[df["STP"] == stp]
+        if not row.empty:
+            return row["OwnerLastName"].values[0]
+    return None
+
+# ---------------- DELEGATION -----------------------
+def delegate_task(driver, name):
+    driver.find_element(By.CSS_SELECTOR, DELEGATE_BTN).click()
+    time.sleep(1)
+    sf = driver.find_element(By.CSS_SELECTOR, DELEG_SEARCH)
+    sf.send_keys(name)
+    time.sleep(1)
+    sf.send_keys(Keys.ENTER)
+    time.sleep(1)
+    driver.find_element(By.CSS_SELECTOR, CONFIRM_DEL_BTN).click()
+    time.sleep(1)
+
+def update_card_owner(driver, name):
+    owner_field = driver.find_element(By.CSS_SELECTOR, CARD_OWNER_SEL)
+    owner_field.clear()
+    owner_field.send_keys(name)
+    owner_field.send_keys(Keys.ENTER)
+    time.sleep(1)
+
+# ---------------- MAIN WORKFLOW ---------------------
+def main():
+    # 1) Connect to Exchange / get latest email
+    account = init_exchange()
+    email_item = get_latest_email(account)
+    if not email_item:
+        return
+
+    # 2) Extract MPS, Workflow, and link
+    mps, wf, link = extract_info(email_item)
+    if not mps or not wf or not link:
+        logging.warning("MPS/Workflow/URL not found in email.")
+        return
+
+    # 3) Init Selenium and login
+    driver = init_browser()
+    driver.get(LOGIN_URL)
+    time.sleep(2)
+    # driver.find_element(By.ID, "username").send_keys("...")
+    # driver.find_element(By.ID, "password").send_keys("...")
+    # driver.find_element(By.ID, "loginButton").click()
+    # time.sleep(3)
+
+    # 4) Create new card
+    create_task_card(driver, mps, wf)
+
+    # 5) Download PDF and parse STPs
+    stp_list = download_and_parse_pdf(driver, link)
+    delegate_name = lookup_owner(stp_list)
+    logging.info(f"Found STPs: {stp_list}, Delegate name: {delegate_name}")
+
+    # 6) Confirm before delegating
+    if delegate_name:
+        choice = input(f"Delegate to '{delegate_name}'? (y/n): ").strip().lower()
+        if choice == 'y':
+            delegate_task(driver, delegate_name)
+            update_card_owner(driver, delegate_name)
+            logging.info("Delegation completed.")
+        else:
+            logging.info("Delegation canceled by user.")
+    else:
+        logging.info("No matching STP owner found in Excel.")
+
+    driver.quit()
+
+if __name__ == "__main__":
+    main()
