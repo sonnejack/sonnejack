@@ -1,0 +1,22 @@
+import os
+import pdfplumber
+import re
+import pandas as pd
+
+# replicate the relevant code from parse_pdf_for_specs, get_numeric_portion, and lookup_spec_owners
+from your_main_script import parse_pdf_for_specs, lookup_spec_owners  # adjust import
+
+TEST_PDF = r"C:\path\to\sample.pdf"
+EXCEL_SPEC_OWNERS = r"C:\path\to\SpecOwners.xlsx"
+
+def main():
+    specs_dict = parse_pdf_for_specs(TEST_PDF)
+    print("Parsed specs:", specs_dict)
+    
+    # Combine revision_specs and other_specs
+    all_specs = list(specs_dict["revision_specs"].union(specs_dict["other_specs"]))
+    owners_map = lookup_spec_owners(all_specs)
+    print("Owner map:", owners_map)
+
+if __name__ == "__main__":
+    main()
