@@ -1,0 +1,101 @@
+Email to Livelink steps:
+
+Receive Email from Fc-Aero, EDM (RESOURCE) <edm.fc-aero@lmco.com> with title either "New Marietta MPS/PPD Spec Review" or "PQA - Marietta M&P Review". We will deal with PQA later. Make a comment about this so we dont forget, but dont deal with it now.
+
+
+2 different formats.
+
+First format: New Marietta MPS/PPD Spec Review
+'''
+A Workflow step has arrived for you in your Assignments area. 
+
+https://edcs-main.external.lmco.com/main/livelink?func=Personal.Assignments 
+
+The MPS 7556_APPX_003B Review - MPS/PPD - 116155966 needs your review. 
+
+You have 10 business days to approve, comment, or do not concur with this workflow. If you do not make comments, or express non-concurrence, or if you do not delegate this to another reviewer, your concurrence and approval is assumed. 
+
+Thank You 
+'''
+
+Important information:
+Document Type: Either "MPS" or "PPD" {in this example email, MPS}
+Document Number "????" Revision "*" {in this example email, 7556_APPX_003B}, this text always falls between "MPS" and "Review"
+Workflow ID ??????????? {in this example email, 116155966}
+
+
+
+Step 1: click on the link https://edcs-main.external.lmco.com/main/livelink?func=Personal.Assignments 
+
+Step 2: click on the name for this review (target the words of the MPS): <a href="/main/livelink?func=work.EditTask&amp;workid=116155966&amp;SubWorkID=116155966&amp;TaskID=4&amp;paneindex=0&amp;nexturl=%2Fmain%2Flivelink%3Ffunc%3DPersonal%2EAssignments">Reviewer 1 - MPS 7556_APPX_003B Review  - MPS/PPD - &lt;WorkID /&gt;</a>
+
+Step 3: obtain "Step Due Date" from: <td class="label" nowrap="">&nbsp;Step Due Date:&nbsp;</td>
+
+<td class="labelVerticalDividerRight" background="/livelinksupport/tbl-divider-ver.gif" style="background-repeat: repeat-y;"><img height="1" alt="" src="/livelinksupport/spacer.gif" width="2" border="0"></td>
+
+<td class="valueStatic" nowrap="">03/05/2025 08:58 AM</td>
+
+There are other dates and times, but the one directly to the right of the step due date is the important one. All we need is the MM/DD/YYYY for use with the taskboard.
+
+Step 4: click on "Attachments": <a href="#" onclick="taskEditShow( '/main/livelink?func=work.frametaskright&amp;workid=116155966&amp;subworkid=116155966&amp;taskid=4&amp;paneindex=3&amp;TECacheID=2019969255&amp;nextURL=%2Fmain%2Flivelink%3Ffunc%3Dwork%2EFrameTaskLeft%26TECacheID%3D2019969255%26WorkID%3D116155966%26SubWorkID%3D116155966%26TaskID%3D4%26NextURL%3D%252Fmain%252Flivelink%253Ffunc%253DPersonal%252EAssignments&amp;objAction=Browse&amp;sort=name')">Attachments</a>
+
+
+Step 5: download the PDF, which is usually named at least part of the MPS: <a href="#" onclick="taskEditShow( '/main/livelink?func=work.frametaskright&amp;workid=116155966&amp;subworkid=116155966&amp;taskid=4&amp;paneindex=3&amp;TECacheID=2019969255&amp;nextURL=%2Fmain%2Flivelink%3Ffunc%3Dwork%2EFrameTaskLeft%26TECacheID%3D2019969255%26WorkID%3D116155966%26SubWorkID%3D116155966%26TaskID%3D4%26NextURL%3D%252Fmain%252Flivelink%253Ffunc%253DPersonal%252EAssignments&amp;objAction=Browse&amp;sort=name')">Attachments</a>
+
+If there is no pdf, don't download anything and dont continue making the card.  create an alert for user intervention.
+
+
+Step 6: click on "Delegate to...": <i>Delegate to...</i>
+
+Step 7: click on "Choose user...": <input class="button" type="BUTTON" value="Choose User..." name="chooseUser" onclick="openURL( '/main/livelink?func=work.ChooseReviewUser&amp;WorkID=116155966&amp;SubWorkID=116155966&amp;TaskID=4&amp;BackURL=%2Fmain%2Flivelink%3Ffunc%3Dwork%2EDelegateReview%26xAction%3DDelegate%26WorkID%3D116155966%26SubWorkID%3D116155966%26TaskID%3D4%26NextURL%3D%252Fmain%252Flivelink%253Ffunc%253Dwork%252EFrameTaskLeft%2526TECacheID%253D2019969255%2526WorkID%253D116155966%2526SubWorkID%253D116155966%2526TaskID%253D4%2526NextURL%253D%25252Fmain%25252Flivelink%25253Ffunc%25253DPersonal%25252EAssignments&amp;NextURL=%2Fmain%2Flivelink%3Ffunc%3Dwork%2EFrameTaskLeft%26TECacheID%3D2019969255%26WorkID%3D116155966%26SubWorkID%3D116155966%26TaskID%3D4%26NextURL%3D%252Fmain%252Flivelink%253Ffunc%253DPersonal%252EAssignments&amp;WFName=MPS%207556_APPX_003B%20Review%20%20%2D%20MPS%2FPPD%20%2D%20116155966&amp;xAction=Delegate', '' );">
+
+Step 8: click on the drop down that says "User Last Name" and select "User Log-In": <select id="_ug_searchColumn" name="_ug_searchColumn" onchange="checkType( this.form )">
+<option value="2" selected="">User Last Name
+
+</option><option value="1">User First Name
+
+</option><option value="0">User Log-in
+
+</option><option value="3">User E-mail
+
+</option><option value="0">Group Name
+</option></select>
+
+
+Step 9: type in employee ID responsible for this document review (requires parsing the PDF first) (e??????)
+
+
+Step 10: press Find: <input class="saveButton" type="SUBMIT" value="Find"> (this may take a few seconds to load results)
+
+
+Step 11: click "select": <a href="/main/livelink?func=work.DelegateReview&amp;WorkID=116155966&amp;SubWorkID=116155966&amp;TaskID=4&amp;xAction=Delegate&amp;PerformerID=112745487&amp;nextURL=%2Fmain%2Flivelink%3Ffunc%3Dwork%2EFrameTaskLeft%26TECacheID%3D2019969255%26WorkID%3D116155966%26SubWorkID%3D116155966%26TaskID%3D4%26NextURL%3D%252Fmain%252Flivelink%253Ffunc%253DPersonal%252EAssignments">Select</a>
+
+
+Step 12: Before clicking delegate, create a user alert verifying the information. Include values such as the MPS #, the Specifications found in the document, and the owners of the specifications (last name and employee number). Sometimes there will be documents that have multiple specifications, which are owned by different people. In this case, allow the user to determine which person to delegate to.
+
+Step 13: click "delegate": <input class="saveButton" type="BUTTON" value="Delegate" onclick="SubmitMyPage();">
+
+I will need to create some functions to parse the document pdf's and scrape the specifications in a future prompt. I have an excel sheet that links the specification to employee numbers and last names, which will allow me to determine the responsibility of the document. These steps are not truly in order: paired with pdf scraping and the taskboard card creation, there will be some back and forth between these websites and processes necessary for error-free completion.
+
+
+Second format: PQA - Marietta M&P Review
+'''
+You have been selected as the reviewer for the workflow titled PQA Procedure Review - Connell Processing, Inc. - P605 Rev. NC Paint G604 - WF ID -113741948 initiated by Dunn, Blake T. (e438586) - Standard. 
+
+Since this notification has been sent to a group you will be required to accept the assignment if you decide to take ownership. 
+
+Please select the following link to go to your personal assignments and select PQA-Marietta M&P Review. 
+
+Link: Personal Assignments 
+
+Thank you. 
+'''
+
+Important information:
+Document Type: "PQA" {in this example email, PQA}
+Manufacturer: - [Name] - {in this example email, 'Connell Processing, Inc.'}
+Specification: either G???? or STP??-??? {in this example email, G604}
+Document Number "????" Revision "*" {in this example email, 3125A}
+Workflow ID ??????????? {in this example email, 113741948}
+
+
