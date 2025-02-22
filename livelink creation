@@ -1,0 +1,8 @@
+def test_livelink_navigation():
+    driver = init_selenium()
+    driver.get("https://edcs-main.external.lmco.com/main/livelink?func=Personal.Assignments")
+    time.sleep(3)
+    # Attempt to click the assignment link if you already know a 'doc_num' that exists
+    # e.g. your script’s XPaths or direct test link
+    ...
+    driver.quit()
