@@ -1,0 +1,51 @@
+Open VTB link (https://servicecentral.external.lmco.com/$vtb.do?sysparm_board=5a1a6cbddbdb4c507c8a74708c96195f)
+
+choose identity provider [click on this] (<img title="Lockheed Martin" alt="Lockheed Martin" src="/assets/lm/images/trusts/lockheed-martin-internal.png">)
+
+Add card: <button class="btn btn-primary btn-block pull-right lane-add-card-btn" ng-click="addTaskAtEnd()"><span class="icon icon-add" aria-hidden="true"></span><span class="add-task-label">Add Card</span></button>
+
+Click on text box: text says "New Task" where typing is necessary 
+
+[type in MPS ????* / WFID], press enter
+
+click on card: <div class="sn-card-component sn-card-component_first sn-card-component_headline vtb-card-header-default ng-binding" ng-bind=":cardUpdated:shortDescription" title="" data-original-title="[MPS ????* / WFID]">[MPS ????* / WFID]</div>
+
+Click on "Additional Comments": <textarea sn-resize-height="" aria-label="Additional comments" id="activity-stream-comments-textarea" sn-sync-with="f.name" sn-sync-with-value-in-fn="reduceMentions(text)" sn-sync-with-value-out-fn="expandMentions(text)" ng-model="f.value" class="sn-string-textarea form-control ng-isolate-scope ng-valid ng-valid-required ng-dirty ng-valid-parse ng-touched ng-empty" ng-required="f.mandatory &amp;&amp; !f.filled" ng-attr-placeholder="{{ ::labels.contentClass ? '' : f.label }}" data-stream-text-input="comments" mentio="" mentio-id="'activity-stream-' + f.name + '-textarea'" mentio-typed-term="typedTerm" mentio-require-leading-space="true" mentio-trigger-char="'@'" mentio-items="members" mentio-search="searchMembersAsync(term)" mentio-template-url="/at-mentions.tpl" mentio-select="selectAtMention(item)" mentio-suppress-trailing-space="true" autocomplete="off" placeholder="Additional comments" aria-invalid="false" style="overflow: hidden; overflow-wrap: break-word; height: 50.6px;"></textarea>
+
+
+Type "initiated by _____" [pulled from livelink], hit enter
+
+
+Click on additional comments
+
+type: Step due date: XX/XX/XXXX [pulled from livelink], hit enter
+
+
+click on due date field:<input id="glide_date_time_dueDate_" type="text" class="form-control ng-valid ng-valid-maxlength ng-touched ng-dirty ng-empty" ng-model="field.displayValue" ng-model-options="{ updateOn: 'default blur', debounce: { 'default': 250, 'blur': 0 } }" ng-change="dateTimeOnChangeHandler()" ng-blur="field.onBlur()" ng-disabled="field.readonly" ng-readonly="field.readonly" maxlength="" sn-focus="field.hasFocus" format="" aria-invalid="false" autocomplete="off" style="">
+
+
+type YYYY-MM-DD 19:00:00 [date reflects step due date, time is always the same], press tab or click somewhere to save (enter doesn't work)
+
+
+
+click "Assignees": <button id="assignees-view" title="" aria-label="Assignees" data-toggle="tooltip" data-placement="auto" class="btn btn-icon icon-user sn-navhub-btn sn-tooltip-basic" ng-click="openView('assignees')" data-original-title="Assignees"></button>
+
+
+click add primary assignee: <div class="btn btn-default btn-add-primary icon" tabindex="0"><span class="icon-add-circle-empty"></span><span>Add Primary Assignee</span></div>
+
+This will be the person deemed responsible for this
+
+Type in employee ID (e######), press enter
+
+click on additional assignee: <span>Add Additional Assignee</span>
+
+type in "e464814" or whoever is in charge of delegating (This is me for now), press enter
+
+
+
+
+
+
+
+
+
