@@ -1,0 +1,151 @@
+import time, logging
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
+
+VTB_URL = "https://servicecentral.external.lmco.com/$vtb.do?sysparm_board=5a1a6cbddb4c507c8a74708c96195f"
+
+# Example CSS/XPath selectors to adapt:
+IDENTITY_PROVIDER_SELECTOR = "//img[@title='Lockheed Martin' and @alt='Lockheed Martin']"
+ADD_CARD_BUTTON_SELECTOR   = "button.btn.btn-primary.btn-block.pull-right.lane-add-card-btn"
+NEW_TASK_SELECTOR          = "//input[contains(@class, 'card-title-input')]"  # or text field
+CARD_TITLE_DIV_SELECTOR    = "//div[contains(@class,'vtb-card-header-default') and contains(text(), 'MPS')]"
+ADDITIONAL_COMMENTS_SEL    = "textarea#activity-stream-comments-textarea"
+DUE_DATE_INPUT_SELECTOR    = "input#glide_date_time_dueDate_"
+ASSIGNEES_BTN_SELECTOR     = "button#assignees-view"
+ADD_PRIMARY_SEL            = "div.btn.btn-default.btn-add-primary.icon"
+ADD_ADDITIONAL_SEL         = "//span[text()='Add Additional Assignee']"
+ 
+def init_browser(download_dir=r"C:\downloads", driver_path=r"C:\path\to\chromedriver.exe"):
+    options = Options()
+    prefs = {
+        "download.default_directory": download_dir,
+        "download.prompt_for_download": False,
+        "plugins.always_open_pdf_externally": True
+    }
+    options.add_experimental_option("prefs", prefs)
+    # options.add_argument("--headless")  # uncomment if you want headless mode
+    driver = webdriver.Chrome(executable_path=driver_path, options=options)
+    return driver
+
+def create_and_assign_task(driver, 
+                           mps_number, 
+                           workflow_id, 
+                           initiated_by, 
+                           step_due_date_display,  # e.g. "MM/DD/YYYY"
+                           step_due_date_field,    # e.g. "YYYY-MM-DD 19:00:00"
+                           primary_assignee, 
+                           additional_assignee):
+    """
+    Automates creating a VTB card, filling additional comments, setting due date,
+    and assigning primary + additional assignees.
+    """
+    # 1. Go to VTB and pick identity provider
+    driver.get(VTB_URL)
+    time.sleep(2)
+    
+    # If the identity provider click is required:
+    try:
+        idp_element = driver.find_element(By.XPATH, IDENTITY_PROVIDER_SELECTOR)
+        idp_element.click()
+        time.sleep(5)  # Wait for redirect / SSO
+    except:
+        logging.info("Identity provider image not found or already handled. Continuing...")
+
+    # 2. Click "Add Card"
+    add_card_btn = driver.find_element(By.CSS_SELECTOR, ADD_CARD_BUTTON_SELECTOR)
+    add_card_btn.click()
+    time.sleep(1)
+
+    # 3. Type in MPS / WFID
+    #    If a direct text input appears, you might have a different locator
+    #    e.g., a text area or "New Task" placeholder:
+    #    Some UIs go directly into "edit mode"; otherwise, find the new card text field:
+    #    This is one approach if a text field pops up:
+    #        new_task_field = driver.find_element(By.XPATH, NEW_TASK_SELECTOR)
+    #        new_task_field.send_keys(f"MPS{mps_number} / WFID{workflow_id}")
+    #        new_task_field.send_keys(Keys.ENTER)
+    #        time.sleep(1)
+    #
+    #    If the card is created in "New Task" mode, you can do:
+    driver.switch_to.active_element.send_keys(f"MPS{mps_number} / WFID{workflow_id}")
+    driver.switch_to.active_element.send_keys(Keys.ENTER)
+    time.sleep(2)
+
+    # 4. Click the newly created card to open details
+    #    Example: locate by partial text
+    card_title_div = driver.find_element(By.XPATH, CARD_TITLE_DIV_SELECTOR)
+    card_title_div.click()
+    time.sleep(2)
+
+    # 5. Click "Additional Comments" text area, type lines
+    comments_area = driver.find_element(By.CSS_SELECTOR, ADDITIONAL_COMMENTS_SEL)
+    comments_area.click()
+    time.sleep(1)
+    comments_area.send_keys(f"initiated by {initiated_by}\n")
+    comments_area.send_keys(f"Step due date: {step_due_date_display}\n")
+    time.sleep(1)
+
+    # 6. Click on the due date field and enter "YYYY-MM-DD 19:00:00"
+    due_date_field = driver.find_element(By.CSS_SELECTOR, DUE_DATE_INPUT_SELECTOR)
+    due_date_field.clear()
+    due_date_field.send_keys(step_due_date_field)  # e.g. "2025-03-15 19:00:00"
+    due_date_field.send_keys(Keys.TAB)  # or driver.find_element(By.CSS_SELECTOR, "somewhereElse").click()
+    time.sleep(1)
+
+    # 7. Assign the owners
+    driver.find_element(By.CSS_SELECTOR, ASSIGNEES_BTN_SELECTOR).click()
+    time.sleep(1)
+
+    # 7a. Add Primary Assignee
+    driver.find_element(By.CSS_SELECTOR, ADD_PRIMARY_SEL).click()
+    time.sleep(1)
+    primary_input = driver.switch_to.active_element
+    primary_input.send_keys(primary_assignee)  # e.g. "e123456"
+    primary_input.send_keys(Keys.ENTER)
+    time.sleep(1)
+
+    # 7b. Add Additional Assignee
+    add_additional_btn = driver.find_element(By.XPATH, ADD_ADDITIONAL_SEL)
+    add_additional_btn.click()
+    time.sleep(1)
+    additional_input = driver.switch_to.active_element
+    additional_input.send_keys(additional_assignee)  # e.g. "e464814"
+    additional_input.send_keys(Keys.ENTER)
+    time.sleep(1)
+
+    logging.info("VTB card creation and assignment steps complete.")
+
+def main():
+    driver = init_browser()
+    try:
+        # Example data from prior logic or user input
+        mps_number    = "1234"
+        workflow_id   = "99999"
+        initiated_by  = "John Doe"         # from Livelink
+        step_due_date = "03/15/2025"       # display format
+        step_due_val  = "2025-03-15 19:00:00"  # date field format
+        primary_id    = "e123456"          # from your logic
+        additional_id = "e464814"
+
+        create_and_assign_task(
+            driver, 
+            mps_number,
+            workflow_id,
+            initiated_by,
+            step_due_date,
+            step_due_val,
+            primary_id,
+            additional_id
+        )
+    except Exception as e:
+        logging.error(f"Error: {e}")
+    finally:
+        time.sleep(3)
+        driver.quit()
+
+if __name__ == "__main__":
+    main()
