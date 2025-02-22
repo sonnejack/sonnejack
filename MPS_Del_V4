@@ -1,0 +1,472 @@
+import os
+import re
+import time
+import shutil
+import logging
+import pdfplumber
+import pandas as pd
+
+# exchangelib for Outlook
+from exchangelib import DELEGATE, Account, Credentials, Configuration
+
+# Selenium
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+
+
+###############################################################################
+# CONFIGURATION
+###############################################################################
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
+
+# -- Exchange/Email --
+EMAIL_ADDRESS        = "your_email@company.com"
+PASSWORD             = "your_password"
+EXCHANGE_SERVER      = "outlook.office365.com"  # or on-prem EWS endpoint
+EMAIL_FOLDER_PATH    = ["Inbox"]                # or ["Inbox","PQA","MPS"] etc.
+SUBJECT_MPS_KEYWORD  = "New Marietta MPS/PPD Spec Review"
+SENDER_ADDRESS       = "edm.fc-aero@lmco.com"
+
+# -- Livelink --
+LIVELINK_ASSIGNMENTS_URL  = "https://edcs-main.external.lmco.com/main/livelink?func=Personal.Assignments"
+ASSIGNMENTS_LINK_XPATH    = "//a[contains(text(),'MPS') and contains(@href,'work.EditTask')]"
+STEP_DUE_DATE_LABEL_XPATH = "//td[@class='label' and contains(text(),'Step Due Date')]"
+STEP_DUE_DATE_VALUE_XPATH = "following-sibling::td[@class='valueStatic']"
+ATTACHMENTS_LINK_XPATH    = "//a[contains(text(),'Attachments')]"
+DELEGATE_TO_XPATH         = "//i[contains(text(),'Delegate to')]"
+CHOOSE_USER_BTN_XPATH     = "//input[@type='BUTTON' and @value='Choose User...']"
+SEARCH_COLUMN_XPATH       = "//select[@id='_ug_searchColumn']"
+FIND_BUTTON_XPATH         = "//input[@type='SUBMIT' and @value='Find']"
+SELECT_USER_LINK_XPATH    = "//a[contains(@href,'xAction=Delegate') and contains(text(),'Select')]"
+DELEGATE_BUTTON_XPATH     = "//input[@type='BUTTON' and @value='Delegate']"
+
+# -- VTB --
+VTB_URL              = "https://servicecentral.external.lmco.com/$vtb.do?sysparm_board=5a1a6cbddb4c507c8a74708c96195f"
+IDENTITY_PROVIDER_XP = "//img[@title='Lockheed Martin' and @alt='Lockheed Martin']"
+ADD_CARD_BTN_CSS     = "button.btn.btn-primary.btn-block.pull-right.lane-add-card-btn"
+CARD_TITLE_DIV_XPATH = "//div[contains(@class,'vtb-card-header-default') and contains(text(),'MPS')]"
+ADDITIONAL_CMTS_CSS  = "textarea#activity-stream-comments-textarea"
+DUE_DATE_INPUT_CSS   = "input#glide_date_time_dueDate_"
+ASSIGNEES_BTN_CSS    = "button#assignees-view"
+ADD_PRIMARY_CSS      = "div.btn.btn-default.btn-add-primary.icon"
+ADD_ADDITIONAL_XPATH = "//span[text()='Add Additional Assignee']"
+
+# -- PDF & Spec Parsing --
+DOWNLOAD_DIR      = r"C:\downloads"
+MPS_PQA_ARCHIVE   = r"C:\path\to\MPS_PQA_Archive"
+EXCEL_SPEC_OWNERS = r"C:\path\to\SpecOwners.xlsx"
+
+# Regex for STP, PS, G specs (with or without spaces/dashes)
+SPEC_PATTERN = re.compile(
+    r'(STP\s?-?\s?\d+\s?-?\d+)|(PS\s?\d+)|(G\s?\d+)',
+    re.IGNORECASE
+)
+
+# If no specs found, we skip delegation and only assign the delegator in VTB:
+DELEGATOR_EMP_ID = "e464814"  # or whoever is running the code
+
+###############################################################################
+# 1) OUTLOOK (exchangelib)
+###############################################################################
+def init_exchange():
+    creds = Credentials(username=EMAIL_ADDRESS, password=PASSWORD)
+    config = Configuration(server=EXCHANGE_SERVER, credentials=creds, autodiscover=True)
+    return Account(
+        primary_smtp_address=EMAIL_ADDRESS,
+        config=config,
+        autodiscover=True,
+        access_type=DELEGATE
+    )
+
+###############################################################################
+# 2) SELENIUM
+###############################################################################
+def init_selenium():
+    chrome_options = Options()
+    prefs = {
+        "download.default_directory": DOWNLOAD_DIR,
+        "download.prompt_for_download": False,
+        "plugins.always_open_pdf_externally": True
+    }
+    chrome_options.add_experimental_option("prefs", prefs)
+    # chrome_options.add_argument("--headless")  # enable if you want headless mode
+    driver = webdriver.Chrome(executable_path=r"C:\path\to\chromedriver.exe", options=chrome_options)
+    return driver
+
+###############################################################################
+# 3) PDF PARSING & SPEC LOOKUP
+###############################################################################
+def parse_pdf_for_specs(pdf_path):
+    if not os.path.exists(pdf_path):
+        logging.warning(f"PDF not found: {pdf_path}")
+        return {"revision_specs": set(), "other_specs": set()}
+
+    full_text = ""
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text() or ""
+            full_text += "\n" + text
+
+    # For simpler matching, unify whitespace
+    normalized_text = re.sub(r'\s+', ' ', full_text, flags=re.MULTILINE)
+
+    # Identify text under "REVISION NOTES"
+    revision_notes = set()
+    revision_section = re.search(r'(REVISION NOTES.*?)(?=1\.\d)', full_text, re.IGNORECASE | re.DOTALL)
+    if revision_section:
+        rev_text = re.sub(r'\s+', ' ', revision_section.group(1))
+        rev_found = SPEC_PATTERN.findall(rev_text)
+        for triple in rev_found:
+            spec_str = ''.join(triple).strip().upper()
+            spec_str = re.sub(r'\s+|-+', '', spec_str)
+            if spec_str:
+                revision_notes.add(spec_str)
+
+    # Find all specs in entire doc
+    other_specs = set()
+    all_found = SPEC_PATTERN.findall(normalized_text)
+    for triple in all_found:
+        spec_str = ''.join(triple).strip().upper()
+        spec_str = re.sub(r'\s+|-+', '', spec_str)
+        if spec_str and spec_str not in revision_notes:
+            other_specs.add(spec_str)
+
+    return {
+        "revision_specs": revision_notes,
+        "other_specs": other_specs
+    }
+
+def move_pdf_to_archive(src_path, archive_folder):
+    if not os.path.exists(src_path):
+        return
+    if not os.path.exists(archive_folder):
+        os.makedirs(archive_folder)
+    shutil.move(src_path, os.path.join(archive_folder, os.path.basename(src_path)))
+
+def lookup_spec_owners(spec_list):
+    """
+    Return a dict: { spec: [(lastName, empID), ...], ... }
+    """
+    if not spec_list or not os.path.exists(EXCEL_SPEC_OWNERS):
+        return {}
+
+    df = pd.read_excel(EXCEL_SPEC_OWNERS)
+    owners_map = {}
+    for spec in spec_list:
+        matches = df.loc[df["SPEC"].str.upper() == spec.upper()]
+        if not matches.empty:
+            grouped_owners = []
+            for _, row in matches.iterrows():
+                grouped_owners.append((row["LAST_NAME"], row["EMP_ID"]))
+            owners_map[spec] = grouped_owners
+        else:
+            owners_map[spec] = []
+    return owners_map
+
+def user_select_owner(owners_for_specs):
+    """
+    Let user pick a spec and an owner. 
+    Returns (chosenSpec, lastName, empID). 
+    If no owners found, user can manually enter an employee ID.
+    """
+    all_specs = list(owners_for_specs.keys())
+    if not all_specs:
+        return None, None, None
+
+    print("\nSpecifications found:")
+    for i, sp in enumerate(all_specs, start=1):
+        print(f"{i}. {sp} => {owners_for_specs[sp]}")
+
+    choice = input("Enter the number of the spec to use: ")
+    try:
+        spec_idx = int(choice) - 1
+        chosen_spec = all_specs[spec_idx]
+    except:
+        logging.info("Invalid choice; defaulting to first spec.")
+        chosen_spec = all_specs[0]
+
+    possible_owners = owners_for_specs[chosen_spec]
+    if not possible_owners:
+        # user must manually enter an employee ID
+        e_id = input(f"No known owner for {chosen_spec}. Enter an employee ID: ")
+        return chosen_spec, "Unknown", e_id
+
+    if len(possible_owners) == 1:
+        ln, eid = possible_owners[0]
+        confirm = input(f"Use {ln} ({eid}) for {chosen_spec}? (y/n): ").lower()
+        if confirm == 'y':
+            return chosen_spec, ln, eid
+        else:
+            e_id = input("Enter an employee ID: ")
+            return chosen_spec, "Unknown", e_id
+
+    # If multiple owners
+    print(f"\nOwners for {chosen_spec}:")
+    for i, (ln, eid) in enumerate(possible_owners, start=1):
+        print(f"{i}. {ln} ({eid})")
+    pick = input("Choose an owner: ")
+    try:
+        idx = int(pick) - 1
+        ln, eid = possible_owners[idx]
+        return chosen_spec, ln, eid
+    except:
+        logging.info("Invalid choice; defaulting to first owner.")
+        return chosen_spec, possible_owners[0][0], possible_owners[0][1]
+
+###############################################################################
+# 4) LIVELINK MPS PROCESSING
+###############################################################################
+def process_livelink_mps(driver, doc_num, wf_id):
+    """
+    1) Go to Assignments, click the link for this doc/workflow
+    2) Grab Step Due Date
+    3) Download PDF, parse specs
+    4) If no specs => skip delegation
+    5) Else let user pick an owner, confirm delegate
+    6) Return (step_due_date, chosen_empid or None if no delegation)
+    """
+    driver.get(LIVELINK_ASSIGNMENTS_URL)
+    time.sleep(3)
+
+    # Step 1: find assignment link
+    try:
+        link = driver.find_element(By.XPATH, ASSIGNMENTS_LINK_XPATH)
+        link.click()
+        time.sleep(2)
+    except:
+        logging.warning("Could not find the Livelink assignment link.")
+        return None, None
+
+    # Step 2: Step Due Date
+    step_due_date = ""
+    try:
+        lbl = driver.find_element(By.XPATH, STEP_DUE_DATE_LABEL_XPATH)
+        step_due_date = lbl.find_element(By.XPATH, STEP_DUE_DATE_VALUE_XPATH).text.split()[0]
+    except:
+        logging.warning("Unable to locate Step Due Date.")
+
+    # Step 3: Attachments
+    pdf_path = None
+    try:
+        attach_link = driver.find_element(By.XPATH, ATTACHMENTS_LINK_XPATH)
+        attach_link.click()
+        time.sleep(2)
+
+        pdf_link = driver.find_element(By.XPATH, f"//a[contains(text(),'{doc_num}') and contains(text(),'.pdf')]")
+        pdf_link.click()
+        time.sleep(5)
+        # Find the newly downloaded PDF
+        for fn in os.listdir(DOWNLOAD_DIR):
+            if fn.lower().endswith(".pdf") and doc_num.lower() in fn.lower():
+                pdf_path = os.path.join(DOWNLOAD_DIR, fn)
+                break
+    except:
+        logging.info("No PDF link found or error downloading.")
+    
+    if not pdf_path or not os.path.exists(pdf_path):
+        input(f"No PDF found for {doc_num}. Press Enter to continue without delegation.")
+        return step_due_date, None
+
+    # Step 4: Parse PDF
+    specs_dict = parse_pdf_for_specs(pdf_path)
+    revision_specs = specs_dict["revision_specs"]
+    other_specs = specs_dict["other_specs"]
+    all_specs = list(revision_specs.union(other_specs))
+
+    logging.info(f"PDF Specs => Revision: {revision_specs}, Others: {other_specs}")
+
+    if not all_specs:
+        logging.info("No specs found, skipping delegation.")
+        # move PDF to archive
+        move_pdf_to_archive(pdf_path, MPS_PQA_ARCHIVE)
+        return step_due_date, None
+
+    # Step 5: Lookup owners, user picks
+    owners_map = lookup_spec_owners(all_specs)
+    chosen_spec, chosen_ln, chosen_emp = user_select_owner(owners_map)
+    move_pdf_to_archive(pdf_path, MPS_PQA_ARCHIVE)
+
+    if not chosen_emp:
+        # No valid emp ID = no delegation
+        logging.info("No employee ID found, skipping delegation.")
+        return step_due_date, None
+
+    confirm = input(f"Delegate to {chosen_ln} ({chosen_emp}) for {chosen_spec}? (y/n): ").lower()
+    if confirm == 'y':
+        try:
+            driver.find_element(By.XPATH, DELEGATE_TO_XPATH).click()
+            time.sleep(2)
+            driver.find_element(By.XPATH, CHOOSE_USER_BTN_XPATH).click()
+            time.sleep(2)
+            dropdown = driver.find_element(By.XPATH, SEARCH_COLUMN_XPATH)
+            for opt in dropdown.find_elements(By.TAG_NAME, "option"):
+                if "User Log-in" in opt.text:
+                    opt.click()
+                    break
+            time.sleep(1)
+            user_id_field = driver.switch_to.active_element
+            user_id_field.send_keys(chosen_emp)
+            driver.find_element(By.XPATH, FIND_BUTTON_XPATH).click()
+            time.sleep(3)
+            driver.find_element(By.XPATH, SELECT_USER_LINK_XPATH).click()
+            time.sleep(2)
+            driver.find_element(By.XPATH, DELEGATE_BUTTON_XPATH).click()
+            time.sleep(2)
+            logging.info(f"Delegation completed to {chosen_emp}.")
+            return step_due_date, chosen_emp
+        except Exception as e:
+            logging.error(f"Delegation error: {e}")
+            return step_due_date, None
+    else:
+        logging.info("User canceled delegation.")
+        return step_due_date, None
+
+###############################################################################
+# 5) VTB CARD CREATION / UPDATE
+###############################################################################
+def create_vtb_card(driver, doc_label, wf_id, step_due_date, assigned_empid="", initiated_by=""):
+    """
+    doc_label = e.g. "MPS7556_APPX_003B"
+    assigned_empid = the user from Livelink or, if no specs, the delegator ID
+    """
+    driver.get(VTB_URL)
+    time.sleep(3)
+
+    # Possibly click identity provider
+    try:
+        idp = driver.find_element(By.XPATH, IDENTITY_PROVIDER_XP)
+        idp.click()
+        time.sleep(5)
+    except:
+        logging.info("No identity provider click needed or not found.")
+
+    # Add Card
+    add_card = driver.find_element(By.CSS_SELECTOR, ADD_CARD_BTN_CSS)
+    add_card.click()
+    time.sleep(1)
+
+    # Name the card
+    driver.switch_to.active_element.send_keys(f"{doc_label} / WFID{wf_id}")
+    driver.switch_to.active_element.send_keys(Keys.ENTER)
+    time.sleep(2)
+
+    # Open the new card (if needed)
+    card_div = driver.find_element(By.XPATH, CARD_TITLE_DIV_XPATH)
+    card_div.click()
+    time.sleep(2)
+
+    # Additional Comments
+    cmts_box = driver.find_element(By.CSS_SELECTOR, ADDITIONAL_CMTS_CSS)
+    cmts_box.click()
+    if initiated_by:
+        cmts_box.send_keys(f"Initiated by {initiated_by}\n")
+    cmts_box.send_keys(f"Step due date: {step_due_date}\n")
+
+    # Put a default time on the due date field
+    # Convert "MM/DD/YYYY" -> "YYYY-MM-DD 19:00:00" if needed
+    # For brevity, a placeholder:
+    # If step_due_date is empty, use a fallback:
+    if step_due_date:
+        # Example parse
+        # from datetime import datetime
+        # dt = datetime.strptime(step_due_date, "%m/%d/%Y")
+        # new_date_str = dt.strftime("%Y-%m-%d 19:00:00")
+        new_date_str = "2025-12-25 19:00:00"  # Demo
+    else:
+        new_date_str = "2025-12-25 19:00:00"
+
+    due_input = driver.find_element(By.CSS_SELECTOR, DUE_DATE_INPUT_CSS)
+    due_input.clear()
+    due_input.send_keys(new_date_str)
+    due_input.send_keys(Keys.TAB)
+    time.sleep(1)
+
+    # Assign user
+    driver.find_element(By.CSS_SELECTOR, ASSIGNEES_BTN_CSS).click()
+    time.sleep(1)
+    driver.find_element(By.CSS_SELECTOR, ADD_PRIMARY_CSS).click()
+    time.sleep(1)
+    primary_input = driver.switch_to.active_element
+    if assigned_empid:
+        primary_input.send_keys(assigned_empid)
+    else:
+        # If none, fallback to delegator
+        primary_input.send_keys(DELEGATOR_EMP_ID)
+    primary_input.send_keys(Keys.ENTER)
+    time.sleep(1)
+
+    logging.info(f"VTB card created: {doc_label} / {wf_id}, assigned to {assigned_empid or DELEGATOR_EMP_ID}.")
+
+###############################################################################
+# 6) MAIN WORKFLOW
+###############################################################################
+def main():
+    account = init_exchange()
+    driver = init_selenium()
+
+    # 1) Find relevant emails (unread)
+    folder = account.inbox
+    for sub in EMAIL_FOLDER_PATH:
+        try:
+            folder = folder / sub
+        except:
+            logging.warning(f"Folder '{sub}' not found, defaulting to Inbox.")
+            folder = account.inbox
+            break
+
+    items = folder.filter(is_read=False)
+    if not items:
+        logging.info("No new emails found.")
+        driver.quit()
+        return
+
+    messages = sorted(items, key=lambda x: x.datetime_received, reverse=True)
+
+    for msg in messages:
+        subj = msg.subject or ""
+        sndr = msg.sender.email_address.lower() if msg.sender else ""
+        body = msg.text_body or str(msg.body)
+
+        if SENDER_ADDRESS in sndr and SUBJECT_MPS_KEYWORD.lower() in subj.lower():
+            logging.info(f"Processing MPS/PPD email: {subj}")
+            msg.is_read = True
+            msg.save()
+
+            # Parse doc type/number/workflow from body
+            # Example: "The MPS 7556_APPX_003B Review - MPS/PPD - 116155966 needs your review."
+            doc_type_match = re.search(r"(MPS|PPD)\s+([\w\d_\.]+)\s+Review", body, re.IGNORECASE)
+            wf_match       = re.search(r"Review\s+-\s+MPS/PPD\s+-\s+(\d+)", body)
+            doc_type = doc_type_match.group(1) if doc_type_match else ""
+            doc_num  = doc_type_match.group(2) if doc_type_match else ""
+            wf_id    = wf_match.group(1) if wf_match else ""
+
+            if not doc_num or not wf_id:
+                logging.warning("Could not parse doc_num or wf_id. Skipping.")
+                continue
+
+            # LIVELINK: get stepDueDate, delegate if specs found
+            step_due_date, chosen_empid = process_livelink_mps(driver, doc_num, wf_id)
+
+            # If no specs => chosen_empid is None => we skip delegation
+            # but still assign the card to the delegator in VTB
+            final_assignee = chosen_empid if chosen_empid else DELEGATOR_EMP_ID
+
+            # Create the VTB card
+            create_vtb_card(
+                driver,
+                doc_label = f"{doc_type}{doc_num}",
+                wf_id = wf_id,
+                step_due_date = step_due_date,
+                assigned_empid = final_assignee,
+                initiated_by = ""  # If you want to parse from email body
+            )
+        else:
+            logging.info(f"Skipping email: {subj}")
+
+    driver.quit()
+    logging.info("Automation completed.")
+
+if __name__ == "__main__":
+    main()
