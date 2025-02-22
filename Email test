@@ -1,0 +1,18 @@
+from exchangelib import DELEGATE, Account, Credentials, Configuration
+
+def test_email():
+    creds = Credentials("your_email@company.com", "your_password")
+    config = Configuration(server="outlook.office365.com", credentials=creds, autodiscover=True)
+    account = Account(primary_smtp_address="your_email@company.com",
+                      config=config,
+                      autodiscover=True,
+                      access_type=DELEGATE)
+    folder = account.inbox
+    # or navigate subfolders
+    unread = folder.filter(is_read=False)
+    for msg in unread:
+        print("Subject:", msg.subject)
+        print("Sender:", msg.sender.email_address if msg.sender else "")
+        # ...
+if __name__ == "__main__":
+    test_email()
