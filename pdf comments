@@ -1,0 +1,37 @@
+PDF Parser:
+After clicking on the pdf in the selenium code, the pdf goes to my downloads file. It should be opened and parsed, then moved to my MPS/PQA folder (i can add the path into the program)
+
+The text exists and is searchable. When taken as text, there will be sections at the beginning something like:
+
+1.2 REVISION NOTES
+1.2.1 Converted to new document format with standardized boilerplate information. Added
+references to applicable documents. Removed Obsolete materials. See revision bars.
+1.3 RELATED DOCUMENTS AND REFERENCE MATERIAL
+1.3.1 The information in this MPS is based on the following documents:
+AC-1481 LM Company Fire Protection Manual
+AC-1504 Workplace Hazards and Personal Protection
+AC-1724 Material Handling HandBook - PM-5008 Guide
+AC-3012 Hazard Communication
+AC-6885 Foreign Object Damage Prevention Procedure, Marietta
+DS 5083 Fittings-Installation of Flared Tube, Straight Threaded Connectors
+PS 0941 Fabrication and Installation of Plumbing Lines, Connectors, and Fittings
+
+
+This isn't necessarily consistent, but there are very few specification formats that matter:
+
+STP??-???, which can be typed as STP ??-??? or STP-??-??? if people are being stupid or new.
+
+PS????, which can be typed as PS ???? if people are being stupid or new.
+
+G????, which can be typed as G ???? or G ???? if people are being stupid or new.
+
+Sometimes, there are only 3 numbers after the initial one.
+
+No other values matter in the text of the PDF, the parser should only look for the specifications.
+
+However, if the specification appears in the REVISION NOTES section, it should be prioritized and noted as the driving change, where the owner of that specification will be the person responsible for reviewing this document. It should still be given as a choice for the delegator (person running this code) to choose the person.
+
+There should also be a function that matches all specifications to the number in an excel and includes the last name and Employee number for the spec owner.
+
+
+Before actually delegating and adding the employee to the card on the taskboard, the delegator should have an option to choose the employee based on the returned specifications from the document. It should be as simple as clicking / typing in the employee number, which then the program will use to delegate appropriately and add to the card. the only user intervention will be to confirm the correct employee.
