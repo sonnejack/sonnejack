@@ -1,0 +1,37 @@
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+import time
+
+VTB_URL = "https://servicecentral.external.lmco.com/$vtb.do?sysparm_board=..."
+IDENTITY_PROVIDER_XP = "//img[@title='Lockheed Martin' and @alt='Lockheed Martin']"
+ADD_CARD_BTN_CSS     = "button.btn.btn-primary.btn-block.pull-right.lane-add-card-btn"
+# ... and so on for your selectors
+
+def test_vtb_card():
+    # 1) Init driver
+    chrome_options = Options()
+    driver = webdriver.Chrome(executable_path=r"C:\path\to\chromedriver.exe", options=chrome_options)
+
+    # 2) Navigate to VTB
+    driver.get(VTB_URL)
+    time.sleep(3)
+
+    # Possibly click identity provider
+    # 3) Add card
+    add_card_btn = driver.find_element(By.CSS_SELECTOR, ADD_CARD_BTN_CSS)
+    add_card_btn.click()
+    time.sleep(1)
+
+    # 4) Type a dummy title
+    driver.switch_to.active_element.send_keys("TEST CARD / WFID12345")
+    driver.switch_to.active_element.send_keys(Keys.ENTER)
+    time.sleep(2)
+
+    # 5) Optionally open the card, add comments, set assignee, etc.
+    # ...
+    driver.quit()
+
+if __name__ == "__main__":
+    test_vtb_card()
