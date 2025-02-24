@@ -1,0 +1,107 @@
+import os
+import re
+import pdfplumber
+import pandas as pd
+import logging
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+import time
+import pyautogui
+
+# replicate the relevant code from parse_pdf_for_specs, get_numeric_portion, and lookup_spec_owners
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
+
+TEST_PDF = r"C:\Users\e464814\Downloads\7556_APPX_003B.pdf"
+EXCEL_SPEC_OWNERS = r"C:\Users\e464814\OneDrive - Lockheed Martin US\Reference Docs\Spec_Owners.xlsx"
+NEW_PDF = r"C:\Users\e464814\Downloads\new_pdf.pdf"
+PRINT_DEST = "//div[slot='controls']"
+PDF_SELECT = "//option[@value='Save as PDF/local/']"
+SAVE_BTN = "//cr-button[@class='action-button']"
+
+# Patterns for capturing the general location of STP/PS/G specs,
+# but we only care about the numeric portion afterwards.
+SPEC_PATTERN = re.compile(r'(PS\s?\d+|STP\s?\d+|G\s?\d+)', re.IGNORECASE)
+
+def save_pdf_as_new_pdf(pdf_path):
+    options = Options()
+    #options.add_argument("--headless")  # Run Chrome in headless mode (optional)
+    driver = webdriver.Chrome(options=options)
+    driver.get("file:///" + pdf_path)
+    time.sleep(2000)
+    pyautogui.hotkey('ctrl','p') # Open print dialog
+    time.sleep(1)
+    destination = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.XPATH, PRINT_DEST))
+    )
+    destination.click()
+    time.sleep(1)
+    save_as_pdf = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.XPATH, PDF_SELECT))
+    )
+    save_as_pdf.click()
+    time.sleep(1)
+    save_button = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.XPATH, SAVE_BTN))
+    )
+    save_button.click()
+    time.sleep(1)
+    try:
+        confirm_save = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//input[@type='button' and @value='Save']"))
+        )
+        confirm_save.send_keys(Keys.TAB)
+        confirm_save.send_keys(Keys.RETURN)
+    except:
+        pass
+    time.sleep(5)  # Wait for the PDF to be saved
+    driver.quit()
+
+''' This isnt working. It needs to do this. 
+click on printer icon:
+/html/body/pdf-viewer//viewer-toolbar//div/div[3]/cr-icon-button[1]//div/cr-icon
+
+click print destination
+/html/body/print-preview-app//print-preview-sidebar//div[2]/print-preview-destination-settings//print-preview-destination-select//print-preview-settings-section
+
+click save as pdf
+/html/body/print-preview-app//print-preview-sidebar//div[2]/print-preview-destination-settings//print-preview-destination-select//print-preview-settings-section/div/select/option[2]
+
+click save
+/html/body/print-preview-app//print-preview-sidebar//print-preview-button-strip//div/cr-button[1]
+
+opens the windows file explorer dialog box. I need to click save (which would just be enter) and then sometimes there is a dialog box for a 'confirm save as' which is still part of chrome but part of the file explorer)
+'''
+
+
+def parse_pdf_for_specs(pdf_path):
+    text = ""
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            txt = page.extract_text()
+            if "Page 4 of" in txt:
+                break
+            text += txt
+    specs = SPEC_PATTERN.findall(text)
+    return specs
+
+def lookup_spec_owners(spec_list):
+    if not spec_list or not os.path.exists(EXCEL_SPEC_OWNERS):
+        return {}
+    df = pd.read_excel(EXCEL_SPEC_OWNERS)
+    owners_map = {numeric_spec: [(row["POC"], row["EmployeeNumber"]) for _, row in df.loc[df["SpecNumber"].astype(str) == str(numeric_spec)].iterrows()] for numeric_spec in spec_list if not df.loc[df["SpecNumber"].astype(str) == str(numeric_spec)].empty}
+    return owners_map
+
+
+def main():
+    save_pdf_as_new_pdf(TEST_PDF)
+    specs = parse_pdf_for_specs(NEW_PDF)
+    print("Parsed specs:", specs)
+    owners_map = lookup_spec_owners(specs)
+    print("Owner map:", owners_map)
+
+if __name__ == "__main__":
+    main()
