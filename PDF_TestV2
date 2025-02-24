@@ -1,0 +1,113 @@
+import os
+import re
+import pdfplumber
+import pandas as pd
+import logging
+import time
+import pyautogui
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
+
+# Paths
+TEST_PDF = r"C:\Users\e464814\Downloads\7556_APPX_003B.pdf"
+EXCEL_SPEC_OWNERS = r"C:\Users\e464814\OneDrive - Lockheed Martin US\Reference Docs\Spec_Owners.xlsx"
+NEW_PDF = r"C:\Users\e464814\Downloads\new_pdf.pdf"
+
+# Regex pattern
+SPEC_PATTERN = re.compile(r'(PS\s?\d+|STP\s?\d+|G\s?\d+)', re.IGNORECASE)
+
+def save_pdf_as_new_pdf(pdf_path):
+    """Open the PDF in Chrome, use print UI, and save as PDF."""
+    options = Options()
+    # options.add_argument("--headless")  # Uncomment if headless mode is desired
+    driver = webdriver.Chrome(options=options)
+    driver.get("file:///" + pdf_path)
+    time.sleep(2)
+
+    # 1. Click on printer icon
+    printer_icon_xpath = "/html/body/pdf-viewer//viewer-toolbar//div/div[3]/cr-icon-button[1]//div/cr-icon"
+    WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, printer_icon_xpath))).click()
+    time.sleep(2)
+
+    # 2. Click print destination
+    print_destination_xpath = "/html/body/print-preview-app//print-preview-sidebar//div[2]/print-preview-destination-settings//print-preview-destination-select//print-preview-settings-section"
+    WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, print_destination_xpath))).click()
+    time.sleep(2)
+
+    # 3. Select 'Save as PDF'
+    save_as_pdf_xpath = "/html/body/print-preview-app//print-preview-sidebar//div[2]/print-preview-destination-settings//print-preview-destination-select//print-preview-settings-section/div/select/option[2]"
+    WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, save_as_pdf_xpath))).click()
+    time.sleep(2)
+
+    # 4. Click 'Save'
+    save_button_xpath = "/html/body/print-preview-app//print-preview-sidebar//print-preview-button-strip//div/cr-button[1]"
+    WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, save_button_xpath))).click()
+    time.sleep(2)
+
+    # 5. Handle file explorer dialog (press 'Enter' to save)
+    pyautogui.press('enter')
+    time.sleep(2)
+
+    # 6. Sometimes a 'Confirm Save As' dialog appears – press enter again
+    # (Wrap in a try-except to avoid errors if it doesn't appear)
+    try:
+        time.sleep(1)
+        pyautogui.press('enter')
+    except:
+        pass
+
+    time.sleep(5)
+    driver.quit()
+
+def parse_pdf_for_specs(pdf_path):
+    """Parse a PDF and return specs before a certain marker."""
+    text = ""
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            txt = page.extract_text()
+            # Stop if 'Page 4 of' is found
+            if "Page 4 of" in txt:
+                break
+            text += txt
+    # Find all matched specs
+    specs = SPEC_PATTERN.findall(text)
+    return specs
+
+def get_numeric_portion(spec_string):
+    """Extract only the numeric portion of a spec."""
+    return re.sub(r"\D", "", spec_string)
+
+def lookup_spec_owners(spec_list):
+    """Match numeric specs to owners from an Excel file."""
+    if not spec_list or not os.path.exists(EXCEL_SPEC_OWNERS):
+        return {}
+
+    df = pd.read_excel(EXCEL_SPEC_OWNERS)
+    owners_map = {}
+    for spec in spec_list:
+        numeric_spec = get_numeric_portion(spec)
+        matched_rows = df.loc[df["SpecNumber"].astype(str) == numeric_spec]
+        if not matched_rows.empty:
+            owners_map[numeric_spec] = [
+                (row["POC"], row["EmployeeNumber"]) 
+                for _, row in matched_rows.iterrows()
+            ]
+    return owners_map
+
+def main():
+    """Main workflow."""
+    save_pdf_as_new_pdf(TEST_PDF)  # Saves to new PDF
+    specs = parse_pdf_for_specs(NEW_PDF)
+    print("Parsed specs:", specs)
+
+    owners_map = lookup_spec_owners(specs)
+    print("Owner map:", owners_map)
+
+if __name__ == "__main__":
+    main()
